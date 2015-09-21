@@ -25,7 +25,7 @@ SOFTWARE.
 #ifndef XHASH_H
 #define XHASH_H
 
-#include <inttypes.h>
+#include <stddef.h>
 
 #define XHASH_DEFAULT_ITERATIONS 12500
 #define XHASH_DEFAULT_MEMORY_BITS 4

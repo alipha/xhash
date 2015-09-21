@@ -1,5 +1,6 @@
 /* https://en.wikibooks.org/wiki/Algorithm_Implementation/Miscellaneous/Base64 */
 
+#include "base64.h"
 #include <inttypes.h>
 #include <string.h>
 
