@@ -52,10 +52,11 @@ namespace XHash.Test
         public int MemoryUsage { get { return _hashArraySize * HashByteSize; } }
 
 #if DEBUG
-        public ISet<string> _hashes;
+        public IList<string> _hashes;
         public int[] _visitCounts;
         public byte[] _originalArray;
         public byte[] __hashArray { get { return _hashArray; } }
+        public int __hashArraySize { get { return _hashArraySize; } }
         public IDictionary<string, int[]> _hashToCells;
         public IList<string>[] _hashesPerCell;
 #endif
@@ -101,7 +102,7 @@ namespace XHash.Test
                 var combinedHash = new byte[(_multiplier + 1) * hashSize];
 
 #if DEBUG
-                _hashes = new HashSet<string>();
+                _hashes = new List<string>();
                 _visitCounts = new int[_hashArraySize];
                 _hashesPerCell = new List<string>[_hashArraySize];
                 _hashToCells = new Dictionary<string, int[]>();
@@ -123,8 +124,7 @@ namespace XHash.Test
                 for (int i = 0; i < _hashArraySize; i += _multiplier)
                 {
 #if DEBUG
-                    if (!_hashes.Add(Convert.ToBase64String(hash)))
-                        throw new Exception("Duplicate hash at i=" + i);
+                    AddHash(hash);
 #endif
 
                 	// we compute a hash and then we repeat that hash, storing the same hash into "_multiplier" # of adjacent cells 
@@ -147,8 +147,7 @@ namespace XHash.Test
                 for (int i = _hashArraySize / _multiplier; i < _iterations; i++)
                 {
 #if DEBUG
-                    if (!_hashes.Add(Convert.ToBase64String(hash)))
-                        throw new Exception("Duplicate hash at i=" + i);
+                    AddHash(hash);
 #endif
                     int combinedHashIndex = 0;
 
@@ -192,7 +191,7 @@ namespace XHash.Test
                             _hashArray[blockStart + b] ^= hash[b];
 #if DEBUG
                         _hashesPerCell[blockStart / hashSize].Add(base64hash);
-                        _hashToCells[base64hash][m] = blockStart;
+                        _hashToCells[base64hash][m] = blockStart / hashSize;
 #endif
                     }
                 }
@@ -211,5 +210,16 @@ namespace XHash.Test
                 return Convert.ToBase64String(data);
             }
         }
+
+#if DEBUG
+        private void AddHash(byte[] hash)
+        {
+            string base64hash = Convert.ToBase64String(hash);
+            _hashes.Add(base64hash);
+
+            if (_hashes.IndexOf(base64hash) != _hashes.Count - 1)
+                throw new Exception("Duplicate hash at i=" + (_hashes.Count - 1));
+        }
+#endif
     }
 }

@@ -31,9 +31,24 @@ using System.Text;
 
 namespace XHash.Test
 {
-    class Program
+    public class Program
     {
-        static void Main(string[] args)
+#if DEBUG
+        struct HashTreeInfo
+        {
+            public int depth;
+            public long count;
+            public long iterations;
+
+            public override string ToString() { return String.Format("{0}\t{1}\t{2}", depth, count, iterations); }
+        }
+
+        private static IDictionary<string, HashTreeInfo> _info = new Dictionary<string, HashTreeInfo>();
+        private static IList<string> _mixingHashes;
+        private static IDictionary<string, string> _prevHash = new Dictionary<string, string>();
+#endif
+
+        public static void Main(string[] args)
         {
             int iterations = 12500;
             int multiplier = 4;
@@ -54,11 +69,14 @@ namespace XHash.Test
             Console.WriteLine(hash);
             Console.WriteLine(hasher.MemoryUsage);
 #if DEBUG
+            /* cell frequency */
             if (!Directory.Exists("stats"))
                 Directory.CreateDirectory("stats");
 
             CellFrequency(String.Format("cellfreq-{0}-{1}.txt", iterations, multiplier), hasher.__hashArray);
 
+
+            /* xored cell frequency */
             byte[] xored = new byte[hasher.MemoryUsage];
 
             for (int i = 0; i < xored.Length; i++)
@@ -68,14 +86,39 @@ namespace XHash.Test
 
             CellFrequency(String.Format("xor-cellfreq-{0}-{1}.txt", iterations, multiplier), xored);
 
+
+            /* visit counts */
             var chars = "0123456789abcdefghijklmnopqrstuvwxyz".ToCharArray();
-            System.IO.File.WriteAllText(@"stats\hash-12500-16.txt", String.Join("", hasher._visitCounts.Select(v => chars[v])));
+            System.IO.File.WriteAllText(String.Format(@"stats\hash-{0}-{1}.txt", iterations, multiplier), String.Join("", hasher._visitCounts.Select(v => chars[v])));
+
+
+            /* depth, count, iterations */
+            int hashArraySize = hasher.__hashArraySize / (1 << multiplier);
+            _mixingHashes = hasher._hashes.Skip(hashArraySize + 1).ToList();
+
+            string prevHash = hasher._hashes[hashArraySize];
+
+            _info[prevHash] = new HashTreeInfo 
+            {
+                depth = 1,
+                count = 0,
+                iterations = 1
+            };
+
+            foreach(string nextHash in _mixingHashes)
+            {
+                _prevHash[nextHash] = prevHash;
+                prevHash = nextHash;
+            }
+
+            var depths = _mixingHashes.Select(h => GetTreeInfo(hasher, h).ToString());
+            System.IO.File.WriteAllLines(String.Format(@"stats\depths-{0}-{1}.txt", iterations, multiplier), depths);
 #endif
             Console.ReadLine();
         }
 
 
-        static void Test()
+        private static void Test()
         {
             var hasher1 = new TestPasswordHasher("Qq48KGoFOXbZcBXDHZuqyjTP5oBfUy4N2iEHmL2NkIw=");
             var hasher2 = new TestPasswordHasher("Qq48KGoFOXbZcBXDHZuqyjTP5oafUy4N2iEHmL2NkIw=");
@@ -189,6 +232,34 @@ namespace XHash.Test
                 c.Key, String.Join(", ", c.Value.Select(i => i.ToString("X")))));
 
             System.IO.File.WriteAllLines(@"stats\" + filename, locations);
+        }
+
+        private static HashTreeInfo GetTreeInfo(TestPasswordHasher hasher, string hash)
+        {
+            if (_info.ContainsKey(hash))
+                return _info[hash];
+
+            HashTreeInfo info = new HashTreeInfo { depth = 0, count = 0, iterations = _info[_prevHash[hash]].iterations + 1 };
+
+            foreach (int index in hasher._hashToCells[hash])
+            {
+                IList<string> cellHashes = hasher._hashesPerCell[index];
+
+                for (int i = 0; i < cellHashes.Count && cellHashes[i] != hash; i++ )
+                {
+                    HashTreeInfo childInfo = GetTreeInfo(hasher, cellHashes[i]);
+
+                    if (childInfo.depth > info.depth)
+                        info.depth = childInfo.depth;
+
+                    info.count += childInfo.count + 1;
+                    info.iterations += childInfo.iterations;
+                }
+            }
+
+            info.depth++;
+            _info[hash] = info;
+            return info;
         }
 #endif
     }
