@@ -190,7 +190,7 @@ namespace XHash.Test
                     }
                 }
  
-                return Convert.ToBase64String(hash);
+                return Convert.ToBase64String(alg.ComputeHash(_hashArray, 0, _hashArray.Length));
             }
         }
  

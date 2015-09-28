@@ -228,6 +228,8 @@ const void *salt, size_t salt_len, int free_after)
 		}
 	}
 
+	crypto_hash_sha512(digest, hash_array, hash_array_size * XHASH_DIGEST_SIZE);
+
 	if (free_after)
 		xhash_free(handle);
 
