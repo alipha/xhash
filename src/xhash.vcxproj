@@ -12,16 +12,20 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="base64.c" />
+    <ClCompile Include="hmacsha512.c" />
+    <ClCompile Include="pbkdf2_sha512.c" />
     <ClCompile Include="sha512.c" />
     <ClCompile Include="xhash.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="base64.h" />
+    <ClInclude Include="hmacsha512.h" />
+    <ClInclude Include="pbkdf2_sha512.h" />
     <ClInclude Include="sha512.h" />
     <ClInclude Include="xhash.h" />
   </ItemGroup>
   <ItemGroup>
-    <Text Include="sha512_LICENSE.txt" />
+    <Text Include="crypto_LICENSE.txt" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{56E0BBD1-2945-496A-AD5D-8168503C0E4F}</ProjectGuid>

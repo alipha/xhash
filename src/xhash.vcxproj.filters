@@ -24,6 +24,12 @@
     <ClInclude Include="sha512.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="pbkdf2_sha512.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="hmacsha512.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="xhash.c">
@@ -35,8 +41,14 @@
     <ClCompile Include="sha512.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="pbkdf2_sha512.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="hmacsha512.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <Text Include="sha512_LICENSE.txt" />
+    <Text Include="crypto_LICENSE.txt" />
   </ItemGroup>
 </Project>

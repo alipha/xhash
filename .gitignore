@@ -30,3 +30,11 @@
 
 # Debug files
 *.dSYM/
+src/Release/
+src/Debug/
+test/Debug/
+test/Release/
+csharp/obj/
+Release/
+Debug/
+xhash.opensdf

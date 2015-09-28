@@ -26,11 +26,23 @@ SOFTWARE.
 #include <stdio.h>
 #include <time.h>
 
+//#include "pbkdf2_sha512.h"
+
 char system_salt[] = "Qq48KGoFOXbZcBXDHZuqyjTP5oBfUy4N2iEHmL2NkIw=";
 char user_salt[] = "NyfLZ6RJXWE1aHrrM5JRefMlipdBV0bCp";
 char password[] = "foo1";
 
 int main(void) {
+	/*
+	unsigned char buf[128];
+	PBKDF2_SHA512(password, sizeof password - 1, user_salt, sizeof user_salt - 1, 50, buf, sizeof buf);
+
+	for (size_t i = 0; i < sizeof buf; i++)
+		printf("%02X", buf[i]);
+	puts("\n");
+	return 0;
+	*/
+
 	xhash_settings hasher;
 	char base64_digest[XHASH_BASE64_DIGEST_SIZE];
 

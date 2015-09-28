@@ -97,9 +97,10 @@ namespace XHash.Test
             	// _hashArraySize is always a power of 2
                 int bitmask = _hashArraySize - 1;
                 int hashSize = HashByteSize;	// in bytes
+                int hashSubArrayLen = _hashArraySize / _multiplier * hashSize;
  
                 // we have a single running hash, but then we combine it with "randomly"-selected cells from the array
-                var combinedHash = new byte[(_multiplier + 1) * hashSize];
+                var combinedHash = new byte[(_multiplier + 1) * hashSize];  /* add one because we'll store the running hash there */
 
 #if DEBUG
                 _hashes = new List<string>();
@@ -114,28 +115,21 @@ namespace XHash.Test
                 if (_hashArray == null)
                     _hashArray = new byte[_hashArraySize * hashSize];
  
-				// initialize the hash
-				string plainText = password + _systemSalt + userSalt;
-                byte[] hash = alg.ComputeHash(Encoding.ASCII.GetBytes(plainText));
+                byte[] hash = new byte[hashSize];
+
+                var pbkdf2 = new PBKDF2<HMACSHA512>(Encoding.ASCII.GetBytes(password), Encoding.ASCII.GetBytes(_systemSalt + userSalt), 1);
+                var bytes = pbkdf2.GetBytes(hashSubArrayLen + hashSize);
  
                 int blockStart = 0;
                 int[] blockStarts = new int[_multiplier];
 
-                for (int i = 0; i < _hashArraySize; i += _multiplier)
-                {
-#if DEBUG
-                    AddHash(hash);
-#endif
+                /* initialize the running hash to what comes out of PBKDF2 after the hash_array is filled */
+                Buffer.BlockCopy(bytes, hashSubArrayLen, hash, 0, hashSize);
 
-                	// we compute a hash and then we repeat that hash, storing the same hash into "_multiplier" # of adjacent cells 
-                    for (int m = 0; m < _multiplier; m++)
-                    {
-                        Buffer.BlockCopy(hash, 0, _hashArray, blockStart, hashSize);
-                        blockStart += hashSize;
-                    }
- 
-					// update the running hash
-                    hash = alg.ComputeHash(hash);
+                for (var i = 0; i < _multiplier; i++)
+                {
+                    Buffer.BlockCopy(bytes, 0, _hashArray, blockStart, hashSubArrayLen);
+                    blockStart += hashSubArrayLen;
                 }
 
 #if DEBUG

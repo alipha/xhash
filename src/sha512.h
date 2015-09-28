@@ -1,13 +1,43 @@
-#ifndef SHA512_H
-#define SHA512_H
+#ifndef crypto_hash_sha512_H
+#define crypto_hash_sha512_H
 
-#define SHA512_DIGEST_SIZE 64
+/*
+* WARNING: Unless you absolutely need to use SHA512 for interoperatibility,
+* purposes, you might want to consider crypto_generichash() instead.
+* Unlike SHA512, crypto_generichash() is not vulnerable to length
+* extension attacks.
+*/
+
+#include <stddef.h>
+#include <stdint.h>
+#include <stdlib.h>
 
 #ifdef __cplusplus
+# if __GNUC__
+#  pragma GCC diagnostic ignored "-Wlong-long"
+# endif
 extern "C" {
 #endif
 
-	void sha512(unsigned char *digest, const unsigned char *message, unsigned int len);
+#define crypto_hash_sha512_BYTES 64U
+
+	typedef struct crypto_hash_sha512_state {
+		uint64_t      state[8];
+		uint64_t      count[2];
+		unsigned char buf[128];
+	} crypto_hash_sha512_state;
+	
+	size_t crypto_hash_sha512_statebytes(void);
+	
+	size_t crypto_hash_sha512_bytes(void);
+
+	int crypto_hash_sha512(unsigned char *out, const unsigned char *in, unsigned long long inlen);
+
+	int crypto_hash_sha512_init(crypto_hash_sha512_state *state);
+
+	int crypto_hash_sha512_update(crypto_hash_sha512_state *state, const unsigned char *in, unsigned long long inlen);
+
+	int crypto_hash_sha512_final(crypto_hash_sha512_state *state, unsigned char *out);
 
 #ifdef __cplusplus
 }

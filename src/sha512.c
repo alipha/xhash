@@ -1,209 +1,316 @@
+
+/*-
+* Copyright 2005,2007,2009 Colin Percival
+* All rights reserved.
+*
+* Redistribution and use in source and binary forms, with or without
+* modification, are permitted provided that the following conditions
+* are met:
+* 1. Redistributions of source code must retain the above copyright
+*    notice, this list of conditions and the following disclaimer.
+* 2. Redistributions in binary form must reproduce the above copyright
+*    notice, this list of conditions and the following disclaimer in the
+*    documentation and/or other materials provided with the distribution.
+*
+* THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+* ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+* IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+* ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+* FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+* DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+* OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+* HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+* LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+* OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+* SUCH DAMAGE.
+*
+*/
+
 #include "sha512.h"
-#include <memory.h>
 
-#define SHA384_512_BLOCK_SIZE 128
+#include <limits.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
 
-#define SHA2_SHFR(x, n)    (x >> n)
-#define SHA2_ROTR(x, n)   ((x >> n) | (x << ((sizeof(x) << 3) - n)))
-#define SHA2_ROTL(x, n)   ((x << n) | (x >> ((sizeof(x) << 3) - n)))
-#define SHA2_CH(x, y, z)  ((x & y) ^ (~x & z))
-#define SHA2_MAJ(x, y, z) ((x & y) ^ (x & z) ^ (y & z))
-#define SHA512_F1(x) (SHA2_ROTR(x, 28) ^ SHA2_ROTR(x, 34) ^ SHA2_ROTR(x, 39))
-#define SHA512_F2(x) (SHA2_ROTR(x, 14) ^ SHA2_ROTR(x, 18) ^ SHA2_ROTR(x, 41))
-#define SHA512_F3(x) (SHA2_ROTR(x,  1) ^ SHA2_ROTR(x,  8) ^ SHA2_SHFR(x,  7))
-#define SHA512_F4(x) (SHA2_ROTR(x, 19) ^ SHA2_ROTR(x, 61) ^ SHA2_SHFR(x,  6))
-#define SHA2_UNPACK32(x, str)                 \
-{                                             \
-    *((str) + 3) = (uint8) ((x)      );       \
-    *((str) + 2) = (uint8) ((x) >>  8);       \
-    *((str) + 1) = (uint8) ((x) >> 16);       \
-    *((str) + 0) = (uint8) ((x) >> 24);       \
-}
-#define SHA2_UNPACK64(x, str)                 \
-{                                             \
-    *((str) + 7) = (uint8) ((x)      );       \
-    *((str) + 6) = (uint8) ((x) >>  8);       \
-    *((str) + 5) = (uint8) ((x) >> 16);       \
-    *((str) + 4) = (uint8) ((x) >> 24);       \
-    *((str) + 3) = (uint8) ((x) >> 32);       \
-    *((str) + 2) = (uint8) ((x) >> 40);       \
-    *((str) + 1) = (uint8) ((x) >> 48);       \
-    *((str) + 0) = (uint8) ((x) >> 56);       \
-}
-#define SHA2_PACK64(str, x)                   \
-{                                             \
-    *(x) =   ((uint64) *((str) + 7)      )    \
-           | ((uint64) *((str) + 6) <<  8)    \
-           | ((uint64) *((str) + 5) << 16)    \
-           | ((uint64) *((str) + 4) << 24)    \
-           | ((uint64) *((str) + 3) << 32)    \
-           | ((uint64) *((str) + 2) << 40)    \
-           | ((uint64) *((str) + 1) << 48)    \
-           | ((uint64) *((str) + 0) << 56);   \
-}
+/* Avoid namespace collisions with BSD <sys/endian.h>. */
+#define be64dec _sha512_be64dec
+#define be64enc _sha512_be64enc
 
-typedef unsigned char uint8;
-typedef unsigned int uint32;
-typedef unsigned long long uint64;
-
-typedef struct {
-	unsigned int m_tot_len;
-	unsigned int m_len;
-	unsigned char m_block[2 * SHA384_512_BLOCK_SIZE];
-	uint64 m_h[8];
-} sha512_state;
-
-void sha512_init(sha512_state *state);
-void sha512_update(sha512_state *state, const unsigned char *message, unsigned int len);
-void sha512_final(sha512_state *state, unsigned char *digest);
-void sha512_transform(sha512_state *state, const unsigned char *message, unsigned int block_nb);
-
-
-const unsigned long long sha512_k[80] = //ULL = uint64
-{ 0x428a2f98d728ae22ULL, 0x7137449123ef65cdULL,
-0xb5c0fbcfec4d3b2fULL, 0xe9b5dba58189dbbcULL,
-0x3956c25bf348b538ULL, 0x59f111f1b605d019ULL,
-0x923f82a4af194f9bULL, 0xab1c5ed5da6d8118ULL,
-0xd807aa98a3030242ULL, 0x12835b0145706fbeULL,
-0x243185be4ee4b28cULL, 0x550c7dc3d5ffb4e2ULL,
-0x72be5d74f27b896fULL, 0x80deb1fe3b1696b1ULL,
-0x9bdc06a725c71235ULL, 0xc19bf174cf692694ULL,
-0xe49b69c19ef14ad2ULL, 0xefbe4786384f25e3ULL,
-0x0fc19dc68b8cd5b5ULL, 0x240ca1cc77ac9c65ULL,
-0x2de92c6f592b0275ULL, 0x4a7484aa6ea6e483ULL,
-0x5cb0a9dcbd41fbd4ULL, 0x76f988da831153b5ULL,
-0x983e5152ee66dfabULL, 0xa831c66d2db43210ULL,
-0xb00327c898fb213fULL, 0xbf597fc7beef0ee4ULL,
-0xc6e00bf33da88fc2ULL, 0xd5a79147930aa725ULL,
-0x06ca6351e003826fULL, 0x142929670a0e6e70ULL,
-0x27b70a8546d22ffcULL, 0x2e1b21385c26c926ULL,
-0x4d2c6dfc5ac42aedULL, 0x53380d139d95b3dfULL,
-0x650a73548baf63deULL, 0x766a0abb3c77b2a8ULL,
-0x81c2c92e47edaee6ULL, 0x92722c851482353bULL,
-0xa2bfe8a14cf10364ULL, 0xa81a664bbc423001ULL,
-0xc24b8b70d0f89791ULL, 0xc76c51a30654be30ULL,
-0xd192e819d6ef5218ULL, 0xd69906245565a910ULL,
-0xf40e35855771202aULL, 0x106aa07032bbd1b8ULL,
-0x19a4c116b8d2d0c8ULL, 0x1e376c085141ab53ULL,
-0x2748774cdf8eeb99ULL, 0x34b0bcb5e19b48a8ULL,
-0x391c0cb3c5c95a63ULL, 0x4ed8aa4ae3418acbULL,
-0x5b9cca4f7763e373ULL, 0x682e6ff3d6b2b8a3ULL,
-0x748f82ee5defb2fcULL, 0x78a5636f43172f60ULL,
-0x84c87814a1f0ab72ULL, 0x8cc702081a6439ecULL,
-0x90befffa23631e28ULL, 0xa4506cebde82bde9ULL,
-0xbef9a3f7b2c67915ULL, 0xc67178f2e372532bULL,
-0xca273eceea26619cULL, 0xd186b8c721c0c207ULL,
-0xeada7dd6cde0eb1eULL, 0xf57d4f7fee6ed178ULL,
-0x06f067aa72176fbaULL, 0x0a637dc5a2c898a6ULL,
-0x113f9804bef90daeULL, 0x1b710b35131c471bULL,
-0x28db77f523047d84ULL, 0x32caab7b40c72493ULL,
-0x3c9ebe0a15c9bebcULL, 0x431d67c49c100d4cULL,
-0x4cc5d4becb3e42b6ULL, 0x597f299cfc657e2aULL,
-0x5fcb6fab3ad6faecULL, 0x6c44198c4a475817ULL };
-
-void sha512_transform(sha512_state *state, const unsigned char *message, unsigned int block_nb)
+static uint64_t be64dec(const void *pp)
 {
-	uint64 w[80];
-	uint64 wv[8];
-	uint64 t1, t2;
-	const unsigned char *sub_block;
-	int i, j;
-	for (i = 0; i < (int)block_nb; i++) {
-		sub_block = message + (i << 7);
-		for (j = 0; j < 16; j++) {
-			SHA2_PACK64(&sub_block[j << 3], &w[j]);
-		}
-		for (j = 16; j < 80; j++) {
-			w[j] = SHA512_F4(w[j - 2]) + w[j - 7] + SHA512_F3(w[j - 15]) + w[j - 16];
-		}
-		for (j = 0; j < 8; j++) {
-			wv[j] = state->m_h[j];
-		}
-		for (j = 0; j < 80; j++) {
-			t1 = wv[7] + SHA512_F2(wv[4]) + SHA2_CH(wv[4], wv[5], wv[6])
-				+ sha512_k[j] + w[j];
-			t2 = SHA512_F1(wv[0]) + SHA2_MAJ(wv[0], wv[1], wv[2]);
-			wv[7] = wv[6];
-			wv[6] = wv[5];
-			wv[5] = wv[4];
-			wv[4] = wv[3] + t1;
-			wv[3] = wv[2];
-			wv[2] = wv[1];
-			wv[1] = wv[0];
-			wv[0] = t1 + t2;
-		}
-		for (j = 0; j < 8; j++) {
-			state->m_h[j] += wv[j];
-		}
+	const uint8_t *p = (uint8_t const *)pp;
 
+	return ((uint64_t)(p[7]) + ((uint64_t)(p[6]) << 8) +
+		((uint64_t)(p[5]) << 16) + ((uint64_t)(p[4]) << 24) +
+		((uint64_t)(p[3]) << 32) + ((uint64_t)(p[2]) << 40) +
+		((uint64_t)(p[1]) << 48) + ((uint64_t)(p[0]) << 56));
+}
+
+static void be64enc(void *pp, uint64_t x)
+{
+	uint8_t *p = (uint8_t *)pp;
+
+	p[7] = x & 0xff;
+	p[6] = (x >> 8) & 0xff;
+	p[5] = (x >> 16) & 0xff;
+	p[4] = (x >> 24) & 0xff;
+	p[3] = (x >> 32) & 0xff;
+	p[2] = (x >> 40) & 0xff;
+	p[1] = (x >> 48) & 0xff;
+	p[0] = (x >> 56) & 0xff;
+}
+
+static void
+be64enc_vect(unsigned char *dst, const uint64_t *src, size_t len)
+{
+	size_t i;
+
+	for (i = 0; i < len / 8; i++) {
+		be64enc(dst + i * 8, src[i]);
 	}
 }
 
-void sha512_init(sha512_state *state)
+static void
+be64dec_vect(uint64_t *dst, const unsigned char *src, size_t len)
 {
-	uint64 *m_h = state->m_h;
+	size_t i;
 
-	m_h[0] = 0x6a09e667f3bcc908ULL;
-	m_h[1] = 0xbb67ae8584caa73bULL;
-	m_h[2] = 0x3c6ef372fe94f82bULL;
-	m_h[3] = 0xa54ff53a5f1d36f1ULL;
-	m_h[4] = 0x510e527fade682d1ULL;
-	m_h[5] = 0x9b05688c2b3e6c1fULL;
-	m_h[6] = 0x1f83d9abfb41bd6bULL;
-	m_h[7] = 0x5be0cd19137e2179ULL;
-	state->m_len = 0;
-	state->m_tot_len = 0;
-}
-
-void sha512_update(sha512_state *state, const unsigned char *message, unsigned int len)
-{
-	unsigned int block_nb;
-	unsigned int new_len, rem_len, tmp_len;
-	const unsigned char *shifted_message;
-	tmp_len = SHA384_512_BLOCK_SIZE - state->m_len;
-	rem_len = len < tmp_len ? len : tmp_len;
-	memcpy(&state->m_block[state->m_len], message, rem_len);
-	if (state->m_len + len < SHA384_512_BLOCK_SIZE) {
-		state->m_len += len;
-		return;
+	for (i = 0; i < len / 8; i++) {
+		dst[i] = be64dec(src + i * 8);
 	}
-	new_len = len - rem_len;
-	block_nb = new_len / SHA384_512_BLOCK_SIZE;
-	shifted_message = message + rem_len;
-	sha512_transform(state, state->m_block, 1);
-	sha512_transform(state, shifted_message, block_nb);
-	rem_len = new_len % SHA384_512_BLOCK_SIZE;
-	memcpy(state->m_block, &shifted_message[block_nb << 7], rem_len);
-	state->m_len = rem_len;
-	state->m_tot_len += (block_nb + 1) << 7;
 }
 
-void sha512_final(sha512_state *state, unsigned char *digest)
+#define Ch(x, y, z)     ((x & (y ^ z)) ^ z)
+#define Maj(x, y, z)    ((x & (y | z)) | (y & z))
+#define SHR(x, n)       (x >> n)
+#define ROTR(x, n)      ((x >> n) | (x << (64 - n)))
+#define S0(x)           (ROTR(x, 28) ^ ROTR(x, 34) ^ ROTR(x, 39))
+#define S1(x)           (ROTR(x, 14) ^ ROTR(x, 18) ^ ROTR(x, 41))
+#define s0(x)           (ROTR(x, 1) ^ ROTR(x, 8) ^ SHR(x, 7))
+#define s1(x)           (ROTR(x, 19) ^ ROTR(x, 61) ^ SHR(x, 6))
+
+#define RND(a, b, c, d, e, f, g, h, k)              \
+    t0 = h + S1(e) + Ch(e, f, g) + k;               \
+    t1 = S0(a) + Maj(a, b, c);                      \
+    d += t0;                                        \
+    h  = t0 + t1;
+
+#define RNDr(S, W, i, k)                    \
+    RND(S[(80 - i) % 8], S[(81 - i) % 8],   \
+        S[(82 - i) % 8], S[(83 - i) % 8],   \
+        S[(84 - i) % 8], S[(85 - i) % 8],   \
+        S[(86 - i) % 8], S[(87 - i) % 8],   \
+        W[i] + k)
+
+static void
+SHA512_Transform(uint64_t *state, const unsigned char block[128])
 {
-	unsigned int block_nb;
-	unsigned int pm_len;
-	unsigned int len_b;
+	uint64_t W[80];
+	uint64_t S[8];
+	uint64_t t0, t1;
 	int i;
-	block_nb = 1 + ((SHA384_512_BLOCK_SIZE - 17)
-		< (state->m_len % SHA384_512_BLOCK_SIZE));
-	len_b = (state->m_tot_len + state->m_len) << 3;
-	pm_len = block_nb << 7;
-	memset(state->m_block + state->m_len, 0, pm_len - state->m_len);
-	state->m_block[state->m_len] = 0x80;
-	SHA2_UNPACK32(len_b, state->m_block + pm_len - 4);
-	sha512_transform(state, state->m_block, block_nb);
-	for (i = 0; i < 8; i++) {
-		SHA2_UNPACK64(state->m_h[i], &digest[i << 3]);
+
+	be64dec_vect(W, block, 128);
+	for (i = 16; i < 80; i++) {
+		W[i] = s1(W[i - 2]) + W[i - 7] + s0(W[i - 15]) + W[i - 16];
 	}
+
+	memcpy(S, state, 64);
+
+	RNDr(S, W, 0, 0x428a2f98d728ae22ULL);
+	RNDr(S, W, 1, 0x7137449123ef65cdULL);
+	RNDr(S, W, 2, 0xb5c0fbcfec4d3b2fULL);
+	RNDr(S, W, 3, 0xe9b5dba58189dbbcULL);
+	RNDr(S, W, 4, 0x3956c25bf348b538ULL);
+	RNDr(S, W, 5, 0x59f111f1b605d019ULL);
+	RNDr(S, W, 6, 0x923f82a4af194f9bULL);
+	RNDr(S, W, 7, 0xab1c5ed5da6d8118ULL);
+	RNDr(S, W, 8, 0xd807aa98a3030242ULL);
+	RNDr(S, W, 9, 0x12835b0145706fbeULL);
+	RNDr(S, W, 10, 0x243185be4ee4b28cULL);
+	RNDr(S, W, 11, 0x550c7dc3d5ffb4e2ULL);
+	RNDr(S, W, 12, 0x72be5d74f27b896fULL);
+	RNDr(S, W, 13, 0x80deb1fe3b1696b1ULL);
+	RNDr(S, W, 14, 0x9bdc06a725c71235ULL);
+	RNDr(S, W, 15, 0xc19bf174cf692694ULL);
+	RNDr(S, W, 16, 0xe49b69c19ef14ad2ULL);
+	RNDr(S, W, 17, 0xefbe4786384f25e3ULL);
+	RNDr(S, W, 18, 0x0fc19dc68b8cd5b5ULL);
+	RNDr(S, W, 19, 0x240ca1cc77ac9c65ULL);
+	RNDr(S, W, 20, 0x2de92c6f592b0275ULL);
+	RNDr(S, W, 21, 0x4a7484aa6ea6e483ULL);
+	RNDr(S, W, 22, 0x5cb0a9dcbd41fbd4ULL);
+	RNDr(S, W, 23, 0x76f988da831153b5ULL);
+	RNDr(S, W, 24, 0x983e5152ee66dfabULL);
+	RNDr(S, W, 25, 0xa831c66d2db43210ULL);
+	RNDr(S, W, 26, 0xb00327c898fb213fULL);
+	RNDr(S, W, 27, 0xbf597fc7beef0ee4ULL);
+	RNDr(S, W, 28, 0xc6e00bf33da88fc2ULL);
+	RNDr(S, W, 29, 0xd5a79147930aa725ULL);
+	RNDr(S, W, 30, 0x06ca6351e003826fULL);
+	RNDr(S, W, 31, 0x142929670a0e6e70ULL);
+	RNDr(S, W, 32, 0x27b70a8546d22ffcULL);
+	RNDr(S, W, 33, 0x2e1b21385c26c926ULL);
+	RNDr(S, W, 34, 0x4d2c6dfc5ac42aedULL);
+	RNDr(S, W, 35, 0x53380d139d95b3dfULL);
+	RNDr(S, W, 36, 0x650a73548baf63deULL);
+	RNDr(S, W, 37, 0x766a0abb3c77b2a8ULL);
+	RNDr(S, W, 38, 0x81c2c92e47edaee6ULL);
+	RNDr(S, W, 39, 0x92722c851482353bULL);
+	RNDr(S, W, 40, 0xa2bfe8a14cf10364ULL);
+	RNDr(S, W, 41, 0xa81a664bbc423001ULL);
+	RNDr(S, W, 42, 0xc24b8b70d0f89791ULL);
+	RNDr(S, W, 43, 0xc76c51a30654be30ULL);
+	RNDr(S, W, 44, 0xd192e819d6ef5218ULL);
+	RNDr(S, W, 45, 0xd69906245565a910ULL);
+	RNDr(S, W, 46, 0xf40e35855771202aULL);
+	RNDr(S, W, 47, 0x106aa07032bbd1b8ULL);
+	RNDr(S, W, 48, 0x19a4c116b8d2d0c8ULL);
+	RNDr(S, W, 49, 0x1e376c085141ab53ULL);
+	RNDr(S, W, 50, 0x2748774cdf8eeb99ULL);
+	RNDr(S, W, 51, 0x34b0bcb5e19b48a8ULL);
+	RNDr(S, W, 52, 0x391c0cb3c5c95a63ULL);
+	RNDr(S, W, 53, 0x4ed8aa4ae3418acbULL);
+	RNDr(S, W, 54, 0x5b9cca4f7763e373ULL);
+	RNDr(S, W, 55, 0x682e6ff3d6b2b8a3ULL);
+	RNDr(S, W, 56, 0x748f82ee5defb2fcULL);
+	RNDr(S, W, 57, 0x78a5636f43172f60ULL);
+	RNDr(S, W, 58, 0x84c87814a1f0ab72ULL);
+	RNDr(S, W, 59, 0x8cc702081a6439ecULL);
+	RNDr(S, W, 60, 0x90befffa23631e28ULL);
+	RNDr(S, W, 61, 0xa4506cebde82bde9ULL);
+	RNDr(S, W, 62, 0xbef9a3f7b2c67915ULL);
+	RNDr(S, W, 63, 0xc67178f2e372532bULL);
+	RNDr(S, W, 64, 0xca273eceea26619cULL);
+	RNDr(S, W, 65, 0xd186b8c721c0c207ULL);
+	RNDr(S, W, 66, 0xeada7dd6cde0eb1eULL);
+	RNDr(S, W, 67, 0xf57d4f7fee6ed178ULL);
+	RNDr(S, W, 68, 0x06f067aa72176fbaULL);
+	RNDr(S, W, 69, 0x0a637dc5a2c898a6ULL);
+	RNDr(S, W, 70, 0x113f9804bef90daeULL);
+	RNDr(S, W, 71, 0x1b710b35131c471bULL);
+	RNDr(S, W, 72, 0x28db77f523047d84ULL);
+	RNDr(S, W, 73, 0x32caab7b40c72493ULL);
+	RNDr(S, W, 74, 0x3c9ebe0a15c9bebcULL);
+	RNDr(S, W, 75, 0x431d67c49c100d4cULL);
+	RNDr(S, W, 76, 0x4cc5d4becb3e42b6ULL);
+	RNDr(S, W, 77, 0x597f299cfc657e2aULL);
+	RNDr(S, W, 78, 0x5fcb6fab3ad6faecULL);
+	RNDr(S, W, 79, 0x6c44198c4a475817ULL);
+
+	for (i = 0; i < 8; i++) {
+		state[i] += S[i];
+	}
+
+	memset(W, 0, sizeof W);
+	memset(S, 0, sizeof S);
+	memset(&t0, 0, sizeof t0);
+	memset(&t1, 0, sizeof t1);
 }
 
-void sha512(unsigned char *digest, const unsigned char *message, unsigned int len)
+static unsigned char PAD[128] = {
+	0x80, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+	0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+};
+
+static void
+SHA512_Pad(crypto_hash_sha512_state *state)
 {
-	sha512_state state;
+	unsigned char len[16];
+	uint64_t r, plen;
 
-	memset(digest, 0, SHA512_DIGEST_SIZE);
+	be64enc_vect(len, state->count, 16);
 
-	sha512_init(&state);
-	sha512_update(&state, message, len);
-	sha512_final(&state, digest);
+	r = (state->count[1] >> 3) & 0x7f;
+	plen = (r < 112) ? (112 - r) : (240 - r);
+	crypto_hash_sha512_update(state, PAD, (unsigned long long) plen);
+
+	crypto_hash_sha512_update(state, len, 16);
+}
+
+int
+crypto_hash_sha512_init(crypto_hash_sha512_state *state)
+{
+	static const uint64_t sha512_initstate[8] = {
+		0x6a09e667f3bcc908ULL, 0xbb67ae8584caa73bULL,
+		0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL,
+		0x510e527fade682d1ULL, 0x9b05688c2b3e6c1fULL,
+		0x1f83d9abfb41bd6bULL, 0x5be0cd19137e2179ULL
+	};
+
+	state->count[0] = state->count[1] = (uint64_t)0U;
+	memcpy(state->state, sha512_initstate, sizeof sha512_initstate);
+
+	return 0;
+}
+
+int
+crypto_hash_sha512_update(crypto_hash_sha512_state *state,
+const unsigned char *in,
+unsigned long long inlen)
+{
+	uint64_t bitlen[2];
+	uint64_t r;
+	const unsigned char *src = in;
+
+	r = (state->count[1] >> 3) & 0x7f;
+
+	bitlen[1] = ((uint64_t)inlen) << 3;
+	bitlen[0] = ((uint64_t)inlen) >> 61;
+
+	/* LCOV_EXCL_START */
+	if ((state->count[1] += bitlen[1]) < bitlen[1]) {
+		state->count[0]++;
+	}
+	/* LCOV_EXCL_STOP */
+	state->count[0] += bitlen[0];
+
+	if (inlen < 128 - r) {
+		memcpy(&state->buf[r], src, inlen);
+		return 0;
+	}
+	memcpy(&state->buf[r], src, 128 - r);
+	SHA512_Transform(state->state, state->buf);
+	src += 128 - r;
+	inlen -= 128 - r;
+
+	while (inlen >= 128) {
+		SHA512_Transform(state->state, src);
+		src += 128;
+		inlen -= 128;
+	}
+	memcpy(state->buf, src, inlen);
+
+	return 0;
+}
+
+int
+crypto_hash_sha512_final(crypto_hash_sha512_state *state,
+unsigned char *out)
+{
+	SHA512_Pad(state);
+	be64enc_vect(out, state->state, 64);
+	memset(state, 0, sizeof *state);
+
+	return 0;
+}
+
+int
+crypto_hash_sha512(unsigned char *out, const unsigned char *in,
+unsigned long long inlen)
+{
+	crypto_hash_sha512_state state;
+
+	crypto_hash_sha512_init(&state);
+	crypto_hash_sha512_update(&state, in, inlen);
+	crypto_hash_sha512_final(&state, out);
+
+	return 0;
 }

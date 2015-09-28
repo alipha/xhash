@@ -37,6 +37,7 @@ first so that the array is sufficientally "mixed up"
 #include "xhash.h"
 #include "base64.h"
 #include "sha512.h"
+#include "pbkdf2_sha512.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -87,7 +88,7 @@ size_t iterations, size_t memory_multiplier_bits)
 	hash_array_size *= handle->multiplier;
 
 	handle->hash_array_size = hash_array_size;
-	handle->hash_array = malloc((hash_array_size + 1) * XHASH_DIGEST_SIZE);
+	handle->hash_array = malloc((hash_array_size + 1) * XHASH_DIGEST_SIZE); /* add one because we'll store the running hash there */
 
 	if (!handle->hash_array)
 	{
@@ -122,8 +123,9 @@ const void *salt, size_t salt_len, int free_after)
 	int error = XHASH_SUCCESS;
 	size_t bitmask;
 	size_t combined_hash_len;
-	size_t combined_data_len;
+	size_t combined_salt_len;
 	size_t hash_array_size;
+	size_t hash_subarray_len;
 	size_t multiplier;
 	size_t mixing_iterations;
 	size_t i, m, b;
@@ -135,9 +137,8 @@ const void *salt, size_t salt_len, int free_after)
 	unsigned char *block_start;
 	unsigned char *dest;
 	unsigned char *source;
-	unsigned char *hash;
 	unsigned char *hash_array;
-	unsigned char *combined_data;
+	unsigned char *combined_salt;
 
 	if (!handle)
 		return XHASH_ERROR_NULL_HANDLE;
@@ -152,7 +153,7 @@ const void *salt, size_t salt_len, int free_after)
 
 	if (error)
 	{
-		if (free_after)
+		if (free_after) 
 			xhash_free(handle);
 		return error;
 	}
@@ -166,50 +167,40 @@ const void *salt, size_t salt_len, int free_after)
 	/* hash_array_size is always a power of 2 */
 	bitmask = hash_array_size - 1;
 	combined_hash_len = (multiplier + 1) * XHASH_DIGEST_SIZE;
+	hash_subarray_len = hash_array_size / multiplier * XHASH_DIGEST_SIZE;
 
 	source = dest = handle->hash_array;
 
-	combined_data_len = handle->system_salt_len + data_len + salt_len;
-	combined_data = malloc(combined_data_len);
+	combined_salt_len = handle->system_salt_len + salt_len;
+	combined_salt = malloc(combined_salt_len);
 
-	if (!combined_data)
+	if (!combined_salt)
 	{
 		if (free_after)
 			xhash_free(handle);
 		return XHASH_ERROR_MALLOC_FAILED;
 	}
 
-	/* initialize the hash */
-	memcpy(combined_data, data, data_len);
-	memcpy(combined_data + data_len, handle->system_salt, handle->system_salt_len);
-	memcpy(combined_data + data_len + handle->system_salt_len, salt, salt_len);
+	memcpy(combined_salt, handle->system_salt, handle->system_salt_len);
+	memcpy(combined_salt + handle->system_salt_len, salt, salt_len);
 
-	sha512(dest, combined_data, combined_data_len);
+	PBKDF2_SHA512(data, data_len, combined_salt, combined_salt_len, 1, hash_array, hash_subarray_len + XHASH_DIGEST_SIZE);
 
+	/* initialize the running hash to what comes out of PBKDF2 after the hash_array is filled */
+	memcpy(digest, hash_array + hash_subarray_len, XHASH_DIGEST_SIZE);
 
-	for (i = 0; i < hash_array_size; i += multiplier)
+	for (i = 1; i < multiplier; i++)
 	{
-		/* we compute a hash and then we repeat that hash, storing the same hash into "multiplier" # of adjacent cells  */
-		for (m = 1; m < multiplier; m++)
-		{
-			dest += XHASH_DIGEST_SIZE;
-			memcpy(dest, source, XHASH_DIGEST_SIZE);
-		}
-
-		/* update the running hash */
-		dest += XHASH_DIGEST_SIZE;
-		sha512(dest, source, XHASH_DIGEST_SIZE);
-		source = dest;
+		dest += hash_subarray_len;
+		memcpy(dest, source, hash_subarray_len);
 	}
 
-
-	hash = dest;
 
 	/* now "randomly mix up" the hash array for the remaining iterations */
 	for (i = 0; i < mixing_iterations; i++)
 	{
 		/* combine the running hash with... */
-		memcpy(combined_hash, hash, XHASH_DIGEST_SIZE);
+		memcpy(combined_hash, digest, XHASH_DIGEST_SIZE);
 
 		/* ..."randomly"-selected cells in the hash array */
 		for (m = 0; m < multiplier; m++)
@@ -218,7 +209,7 @@ const void *salt, size_t salt_len, int free_after)
 			Since hashes are 64 bytes long and ints are 4 bytes, we can only get 16 random indexes from the hash,
 			which is why _multiplier is limited to 16.
 			(We're actually only using 24 bits per int, since that is enough for now, but could expand to 32 bits) */
-			next_index = (hash[m * 4] + (hash[m * 4 + 1] << 8) + (hash[m * 4 + 2] << 16)) & bitmask;
+			next_index = (digest[m * 4] + (digest[m * 4 + 1] << 8) + (digest[m * 4 + 2] << 16)) & bitmask;
 
 			/* add that selected hash to the combined hash */
 			block_starts[m] = block_start = hash_array + (next_index * XHASH_DIGEST_SIZE);
@@ -226,18 +217,16 @@ const void *salt, size_t salt_len, int free_after)
 		}
 
 		/* update the running hash */
-		sha512(hash, combined_hash, combined_hash_len);
+		crypto_hash_sha512(digest, combined_hash, combined_hash_len);
 
 		for (m = 0; m < multiplier; m++)
 		{
 			block_start = block_starts[m];
 			/* xor the selected hash with the running hash so that the hash array is constantly being modified */
 			for (b = 0; b < XHASH_DIGEST_SIZE; b++)
-				block_start[b] ^= hash[b];
+				block_start[b] ^= digest[b];
 		}
 	}
-
-	memcpy(digest, hash, XHASH_DIGEST_SIZE);
 
 	if (free_after)
 		xhash_free(handle);

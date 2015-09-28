@@ -50,6 +50,16 @@ namespace XHash.Test
 
         public static void Main(string[] args)
         {
+            /*
+            string user_salt = "NyfLZ6RJXWE1aHrrM5JRefMlipdBV0bCp";
+            string password = "foo1";
+            var pbkdf2 = new PBKDF2<HMACSHA512>(Encoding.ASCII.GetBytes(password), Encoding.ASCII.GetBytes(user_salt), 50);
+            var bytes = pbkdf2.GetBytes(128);
+
+            Console.WriteLine(String.Join("", bytes.Select(x => x.ToString("X2"))));
+            return;
+             */
+
             int iterations = 12500;
             int multiplier = 4;
 
