@@ -46,15 +46,16 @@ int main(void) {
 	xhash_settings hasher;
 	char base64_digest[XHASH_BASE64_DIGEST_SIZE];
 
-	int error = xhash_init_defaults(&hasher, system_salt, sizeof system_salt - 1);
+	//int error = xhash_init_defaults(&hasher, system_salt, sizeof system_salt - 1);
+	int error = xhash_init(&hasher, system_salt, sizeof system_salt - 1, 22, 212);
 
 	if (!error)
 	{
 		long startTime = clock();
 		error = xhash_text(&hasher, base64_digest, password, user_salt, 0);
 		printf("%ld\n", (clock() - startTime) / (CLOCKS_PER_SEC / 1000));
-		printf("%d KB\n", hasher.hash_array_size * XHASH_DIGEST_SIZE / 1024);
-		printf("%d\n", sizeof hasher);
+		printf("%d KB\n", hasher.memory_usage / 1024);
+		printf("%d\n", hasher.mixing_iterations);
 
 		xhash_free(&hasher);
 

@@ -27,26 +27,27 @@ SOFTWARE.
 
 #include <stddef.h>
 
-#define XHASH_DEFAULT_ITERATIONS 12500
-#define XHASH_DEFAULT_MEMORY_BITS 4
+#define XHASH_MULTIPLIER_BITS 4
+#define XHASH_MULTIPLIER (1 << XHASH_MULTIPLIER_BITS)
 
-#define XHASH_MAX_MEMORY_BITS 4
-#define XHASH_MIN_ITERATIONS 3
-
-#define XHASH_DIGEST_SIZE 64
+#define XHASH_DIGEST_BITS 6
+#define XHASH_DIGEST_SIZE (1 << XHASH_DIGEST_BITS)
 #define XHASH_BASE64_DIGEST_SIZE 89
+
+#define XHASH_DEFAULT_MEMORY_BITS 22
+
+#define XHASH_MIN_MEMORY_BITS (XHASH_MULTIPLIER_BITS + XHASH_DIGEST_BITS)
+#define XHASH_MAX_MEMORY_BITS (XHASH_DIGEST_BITS + 31)
 
 #define XHASH_SUCCESS 0
 #define XHASH_ERROR_NULL_HANDLE -1
 #define XHASH_ERROR_HANDLE_NOT_INIT -2
-/* iterations must be >= 3 */
-#define XHASH_ERROR_INVALID_ITERATIONS -3
-/* memory_multiplier_bits must be between 0 and 4 inclusive */
-#define XHASH_ERROR_INVALID_MEMORY_MULTIPLIER -4
-#define XHASH_ERROR_NULL_DIGEST -5
-#define XHASH_ERROR_NULL_DATA -6
-#define XHASH_ERROR_NULL_SALT -7
-#define XHASH_ERROR_MALLOC_FAILED -8
+/* memory_multiplier_bits must be between 10 and 37 inclusive. default is 22 */
+#define XHASH_ERROR_INVALID_MEMORY_BITS -3
+#define XHASH_ERROR_NULL_DIGEST -4
+#define XHASH_ERROR_NULL_DATA -5
+#define XHASH_ERROR_NULL_SALT -6
+#define XHASH_ERROR_MALLOC_FAILED -7
 
 #ifdef WIN32
 	#ifdef XHASH_BUILD_LIB
@@ -69,10 +70,10 @@ typedef struct xhash_settings
 {
 	unsigned char *system_salt;
 	size_t system_salt_len;
-	size_t iterations;
-	size_t multiplier;
 	size_t mixing_iterations;
-	size_t hash_array_size;		/* memory usage: hash_array_size * XHASH_DIGEST_SIZE */
+	size_t fill_amount;
+	size_t memory_blocks;
+	size_t memory_usage;
 	unsigned char *hash_array;
 } xhash_settings;
 
@@ -83,15 +84,13 @@ extern "C" {
 
 	/* call one of the init functions first, passing in a pointer to a xhash_settings to fill */
 	XHASH_EXPORT
-	int xhash_init(xhash_settings *handle, const void *system_salt, size_t system_salt_len,
-	size_t iterations, size_t memory_multiplier_bits);
+	int xhash_init(xhash_settings *handle, const void *system_salt, size_t system_salt_len, size_t memory_bits, size_t additional_iterations);
 
 	XHASH_EXPORT
 	int xhash_init_defaults(xhash_settings *handle, const void *system_salt, size_t system_salt_len);
 
 	XHASH_EXPORT
-	int xhash(xhash_settings *handle, unsigned char *digest, const void *data, size_t data_len,
-	const void *salt, size_t salt_len, int free_after);
+	int xhash(xhash_settings *handle, unsigned char *digest, const void *data, size_t data_len, const void *salt, size_t salt_len, int free_after);
 
 	XHASH_EXPORT
 	int xhash_text(xhash_settings *handle, char *base64_digest, const char *password, const char *user_salt, int free_after);

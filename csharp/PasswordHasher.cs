@@ -34,12 +34,11 @@ namespace XHash
         Success = 0,
         NullHandle = -1,
         HandleNotInitialized = -2,
-        InvalidIterations = -3,
-        InvalidMemoryMultiplier = -4,
-        NullDigest = -5,
-        NullData = -6,
-        NullSalt = -7,
-        MallocFailed = -8
+        InvalidMemoryBits = -3,
+        NullDigest = -4,
+        NullData = -5,
+        NullSalt = -6,
+        MallocFailed = -7
     }
 
     [StructLayout(LayoutKind.Sequential)]
@@ -47,10 +46,10 @@ namespace XHash
     {
         public IntPtr system_salt;
         public int system_salt_len;
-        public int iterations;
-        public int multiplier;
         public int mixing_iterations;
-        public int hash_array_size;
+        public int fill_amount;
+        public int memory_blocks;
+        public int memory_usage;
         public IntPtr hash_array;
     }
 
@@ -58,7 +57,7 @@ namespace XHash
     public class PasswordHasher : IDisposable
     {
         [DllImport("xhash.dll", CallingConvention=CallingConvention.Cdecl)]
-        private static extern int xhash_init(ref Settings handle, byte[] system_salt, int system_salt_len, int iterations, int memory_multiplier_bits);
+        private static extern int xhash_init(ref Settings handle, byte[] system_salt, int system_salt_len, int memory_bits, int additional_iterations);
 
         [DllImport("xhash.dll", CallingConvention=CallingConvention.Cdecl)]
         private static extern int xhash_init_defaults(ref Settings handle, byte[] system_salt, int system_salt_len);
@@ -75,26 +74,32 @@ namespace XHash
 
         private Settings xhash_settings;
 
-        public int HashByteSize { get { return 64; } }
 
-        public int MemoryUsage { get { return xhash_settings.hash_array_size * HashByteSize; } }
+        public const int DefaultMemoryBits = 22;
+        public const int MinMemoryBits = 10;
+        public const int MaxMemoryBits = 37;
+
+        public const int DigestBits = 6;
+        public const int DigestSize = (1 << DigestBits);
+
+
+        public int MemoryUsage { get { return xhash_settings.memory_usage; } }
 
 
         // memoryMultiplier has a range of [0, 4]
         // iterations * 2^memoryMultiplier < 2^24 (16 million)
-        public PasswordHasher(string systemSalt = "", int iterations = 12288, int memoryMultiplier = 4)
+        public PasswordHasher(string systemSalt = "", int memoryBits = DefaultMemoryBits, int additionalIterations = 0)
         {
             byte[] systemSaltBytes = Encoding.ASCII.GetBytes(systemSalt);
 
             xhash_settings = new Settings();
-            var error = (HashError)xhash_init(ref xhash_settings, systemSaltBytes, systemSaltBytes.Length, iterations, memoryMultiplier);
+            var error = (HashError)xhash_init(ref xhash_settings, systemSaltBytes, systemSaltBytes.Length, memoryBits, additionalIterations);
 
             switch(error)
             {
-                case HashError.Success:                 break;
-                case HashError.InvalidIterations:       throw new IterationsOutOfRangeException(iterations);
-                case HashError.InvalidMemoryMultiplier: throw new MemoryMultiplierOutOfRangeException(memoryMultiplier);
-                default:                                throw new Exception("Error in PasswordHasher constructor: " + error);
+                case HashError.Success:           break;
+                case HashError.InvalidMemoryBits: throw new MemoryBitsOutOfRangeException(memoryBits);
+                default:                          throw new Exception("Error in PasswordHasher constructor: " + error);
             }              
         }
 
@@ -103,7 +108,7 @@ namespace XHash
         {
             byte[] passwordBytes = Encoding.ASCII.GetBytes(password);
             byte[] userSaltBytes = Encoding.ASCII.GetBytes(userSalt);
-            byte[] digest = new byte[64];
+            byte[] digest = new byte[DigestSize];
 
             var error = (HashError)xhash(ref xhash_settings, digest, passwordBytes, passwordBytes.Length, userSaltBytes, userSaltBytes.Length, 0);
 
@@ -132,17 +137,10 @@ namespace XHash
     }
 
 
-    public class IterationsOutOfRangeException : ArgumentOutOfRangeException
+    public class MemoryBitsOutOfRangeException : ArgumentOutOfRangeException
     {
-        public IterationsOutOfRangeException(int provided) : base("iterations", provided,
-                "Argument iterations to LiphSoft.Encryption.PasswordHasher must be equal to or greater than 3. Provided: " + provided)
-        { }
-    }
-
-    public class MemoryMultiplierOutOfRangeException : ArgumentOutOfRangeException
-    {
-        public MemoryMultiplierOutOfRangeException(int provided) : base("memoryMultiplier", provided,
-                "Argument memoryMultiplier to LiphSoft.Encryption.PasswordHasher must have a range of 0 to 4. Provided: " + provided)
+        public MemoryBitsOutOfRangeException(int provided) : base("memoryBits", provided,
+                "Argument memoryBits to LiphSoft.Encryption.PasswordHasher must have a range of 10 to 37 (default of 22). Provided: " + provided)
         { }
     }
 }

@@ -40,53 +40,45 @@ namespace XHash.Test
 {
     public class TestPasswordHasher
     {
+        private const int MULTIPLIER_BITS = 4;
+        private const int MULTIPLIER = (1 << MULTIPLIER_BITS);
+
         private string _systemSalt;
-        private int _iterations;
-        private int _multiplier;
- 
-        private int _hashArraySize;
+        private int _mixingIterations;
+        private int _fillAmount;
+        private int _memoryBlocks;
+
         private byte[] _hashArray;
 
-        public int HashByteSize { get { return 64; } }
-
-        public int MemoryUsage { get { return _hashArraySize * HashByteSize; } }
+        public int MemoryUsage { get { return _fillAmount * MULTIPLIER; } }
 
 #if DEBUG
         public IList<string> _hashes;
         public int[] _visitCounts;
         public byte[] _originalArray;
         public byte[] __hashArray { get { return _hashArray; } }
-        public int __hashArraySize { get { return _hashArraySize; } }
+        public int __hashArraySize { get { return _memoryBlocks; } }
         public IDictionary<string, int[]> _hashToCells;
         public IList<string>[] _hashesPerCell;
 #endif
  
         // memoryMultiplier has a range of [0, 4]
         // iterations * 2^memoryMultiplier < 2^24 (16 million)
-        public TestPasswordHasher(string systemSalt = "", int iterations = 12288, int memoryMultiplier = 4)
+        public TestPasswordHasher(string systemSalt = "", int memoryBits = PasswordHasher.DefaultMemoryBits, int additionalIterations = 0)
         {
-            if (iterations < 3) // 2)
-                throw new IterationsOutOfRangeException(iterations);
-            if (memoryMultiplier < 0 || memoryMultiplier > 4)
-                throw new MemoryMultiplierOutOfRangeException(memoryMultiplier);
-
+            if (memoryBits < PasswordHasher.MinMemoryBits || memoryBits > PasswordHasher.MaxMemoryBits)
+                throw new MemoryBitsOutOfRangeException(memoryBits);
 
             _systemSalt = "AXHwyuIHKoC1jeOgl0Di2f3s9hSDpjOaVP8xD7X6bVu" + (systemSalt ?? "");
-            _iterations = iterations;  // # of times we call SHA512.ComputeHash
-            _multiplier = 1 << memoryMultiplier;
- 
-			// We want to pick an array size that's a power of two so that the "random" selection of the next cell is fast to perform
-            _hashArraySize = 3; // 2;
- 
-            while (_hashArraySize <= _iterations)
-                _hashArraySize *= 2;
- 
-            _hashArraySize &= _hashArraySize - 1;
 
-			// Dividing by 4 guarantees that the number of iterations performed in the "random mixing up" step is at least as 
-            // many as the # of cells (and potentionally up to 3 times as many)
-            _hashArraySize /= 4;
-            _hashArraySize *= _multiplier;
+            int fillBlocks = (1 << (memoryBits - MULTIPLIER_BITS - PasswordHasher.DigestBits));
+
+            _fillAmount = fillBlocks * PasswordHasher.DigestSize;
+
+	        _mixingIterations = fillBlocks * 2 + additionalIterations;  /* # of times we call crypto_hash_sha512 */
+	        _memoryBlocks = fillBlocks * MULTIPLIER;
+
+            _hashArray = new byte[MemoryUsage + PasswordHasher.DigestSize]; /* add one because we'll store the running hash there */
         }
 
  
@@ -95,41 +87,36 @@ namespace XHash.Test
             using (SHA512 alg = SHA512.Create())
             {
             	// _hashArraySize is always a power of 2
-                int bitmask = _hashArraySize - 1;
-                int hashSize = HashByteSize;	// in bytes
-                int hashSubArrayLen = _hashArraySize / _multiplier * hashSize;
- 
+                int bitmask = _memoryBlocks - 1;
+
                 // we have a single running hash, but then we combine it with "randomly"-selected cells from the array
-                var combinedHash = new byte[(_multiplier + 1) * hashSize];  /* add one because we'll store the running hash there */
+                var combinedHash = new byte[(MULTIPLIER + 1) * PasswordHasher.DigestSize];  /* add one because we'll store the running hash there */
 
 #if DEBUG
                 _hashes = new List<string>();
-                _visitCounts = new int[_hashArraySize];
-                _hashesPerCell = new List<string>[_hashArraySize];
+                _visitCounts = new int[_memoryBlocks];
+                _hashesPerCell = new List<string>[_memoryBlocks];
                 _hashToCells = new Dictionary<string, int[]>();
 
                 for (int i = 0; i < _hashesPerCell.Length; i++ )
                     _hashesPerCell[i] = new List<string>();
 #endif
 
-                if (_hashArray == null)
-                    _hashArray = new byte[_hashArraySize * hashSize];
- 
-                byte[] hash = new byte[hashSize];
+                byte[] hash = new byte[PasswordHasher.DigestSize];
 
-                var pbkdf2 = new PBKDF2<HMACSHA512>(Encoding.ASCII.GetBytes(password), Encoding.ASCII.GetBytes(_systemSalt + userSalt), 1);
-                var bytes = pbkdf2.GetBytes(hashSubArrayLen + hashSize);
+                var pbkdf2 = new PBKDF2<HMACSHA512>(Encoding.ASCII.GetBytes(password), Encoding.ASCII.GetBytes(_systemSalt + userSalt ?? ""), 1);
+                var bytes = pbkdf2.GetBytes(_fillAmount + PasswordHasher.DigestSize);
  
                 int blockStart = 0;
-                int[] blockStarts = new int[_multiplier];
+                int[] blockStarts = new int[MULTIPLIER];
 
                 /* initialize the running hash to what comes out of PBKDF2 after the hash_array is filled */
-                Buffer.BlockCopy(bytes, hashSubArrayLen, hash, 0, hashSize);
+                Buffer.BlockCopy(bytes, _fillAmount, hash, 0, PasswordHasher.DigestSize);
 
-                for (var i = 0; i < _multiplier; i++)
+                for (var i = 0; i < MULTIPLIER; i++)
                 {
-                    Buffer.BlockCopy(bytes, 0, _hashArray, blockStart, hashSubArrayLen);
-                    blockStart += hashSubArrayLen;
+                    Buffer.BlockCopy(bytes, 0, _hashArray, blockStart, _fillAmount);
+                    blockStart += _fillAmount;
                 }
 
 #if DEBUG
@@ -137,33 +124,31 @@ namespace XHash.Test
                 Buffer.BlockCopy(_hashArray, 0, _originalArray, 0, _hashArray.Length);
 #endif
 
-				// now "randomly mix up" the hash array for the remaining iterations
-                for (int i = _hashArraySize / _multiplier; i < _iterations; i++)
+				// now "randomly mix up" the hash array
+                for (int i = 0; i < _mixingIterations; i++)
                 {
 #if DEBUG
                     AddHash(hash);
 #endif
-                    int combinedHashIndex = 0;
+                    int combinedHashEnd = PasswordHasher.DigestSize;
 
                 	// combine the running hash with...
-                    Buffer.BlockCopy(hash, 0, combinedHash, combinedHashIndex, hashSize);
+                    Buffer.BlockCopy(hash, 0, combinedHash, 0, PasswordHasher.DigestSize);
                     
  
 					// ..."randomly"-selected cells in the hash array
-                    for (int m = 0; m < _multiplier; m++ )
+                    for (int m = 0; m < MULTIPLIER; m++ )
                     {
-                        combinedHashIndex += hashSize;
-
                     	// create a random int from bytes in the running hash and interpret the int as which cell to get a hash from.
                     	// Since hashes are 64 bytes long and ints are 4 bytes, we can only get 16 random indexes from the hash,
                     	// which is why _multiplier is limited to 16. 
-                        // (We're actually only using 24 bits per int, since that is enough for now, but could expand to 32 bits)
-                        int nextIndex = (hash[m * 4] + (hash[m * 4 + 1] << 8) + (hash[m * 4 + 2] << 16)) & bitmask;
+                        int nextIndex = (hash[m * 4] + (hash[m * 4 + 1] << 8) + (hash[m * 4 + 2] << 16) +
+                            (hash[m * 4 + 3] << 24)) & bitmask;
  
 						// add that selected hash to the combined hash
-                        blockStarts[m] = blockStart = nextIndex * hashSize;
-                        Buffer.BlockCopy(_hashArray, blockStart, combinedHash, combinedHashIndex, hashSize);
-
+                        blockStarts[m] = blockStart = nextIndex * PasswordHasher.DigestSize;
+                        Buffer.BlockCopy(_hashArray, blockStart, combinedHash, combinedHashEnd, PasswordHasher.DigestSize);
+                        combinedHashEnd += PasswordHasher.DigestSize;
 #if DEBUG
                         _visitCounts[nextIndex]++;
 #endif
@@ -174,23 +159,24 @@ namespace XHash.Test
 
 #if DEBUG
                     var base64hash = Convert.ToBase64String(hash);
-                    _hashToCells[base64hash] = new int[_multiplier];
+                    _hashToCells[base64hash] = new int[MULTIPLIER];
 #endif
 
-                    for (int m = 0; m < _multiplier; m++)
+                    for (int m = 0; m < MULTIPLIER; m++)
                     {
                         blockStart = blockStarts[m];
                         // xor the selected hash with the running hash so that the hash array is constantly being modified
-                        for (int b = 0; b < hashSize; b++)
+                        for (int b = 0; b < PasswordHasher.DigestSize; b++)
                             _hashArray[blockStart + b] ^= hash[b];
 #if DEBUG
-                        _hashesPerCell[blockStart / hashSize].Add(base64hash);
-                        _hashToCells[base64hash][m] = blockStart / hashSize;
+                        int hashIndex = blockStart / PasswordHasher.DigestSize;
+                        _hashesPerCell[hashIndex].Add(base64hash);
+                        _hashToCells[base64hash][m] = hashIndex;
 #endif
                     }
                 }
  
-                return Convert.ToBase64String(alg.ComputeHash(_hashArray, 0, _hashArray.Length));
+                return Convert.ToBase64String(alg.ComputeHash(_hashArray, 0, MemoryUsage));
             }
         }
  

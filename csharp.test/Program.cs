@@ -60,10 +60,10 @@ namespace XHash.Test
             return;
              */
 
-            int iterations = 12500;
-            int multiplier = 4;
+            int iterations = 0;
+            int memoryBits = 22;
 
-            var chasher = new PasswordHasher("Qq48KGoFOXbZcBXDHZuqyjTP5oBfUy4N2iEHmL2NkIw=", iterations, multiplier);
+            var chasher = new PasswordHasher("Qq48KGoFOXbZcBXDHZuqyjTP5oBfUy4N2iEHmL2NkIw=", memoryBits, iterations);
 
             var startTime = DateTime.UtcNow;
             string hash = chasher.Hash("foo1", "NyfLZ6RJXWE1aHrrM5JRefMlipdBV0bCp");
@@ -71,7 +71,7 @@ namespace XHash.Test
             Console.WriteLine(hash);
             Console.WriteLine(chasher.MemoryUsage);
 
-            var hasher = new TestPasswordHasher("Qq48KGoFOXbZcBXDHZuqyjTP5oBfUy4N2iEHmL2NkIw=", iterations, multiplier);
+            var hasher = new TestPasswordHasher("Qq48KGoFOXbZcBXDHZuqyjTP5oBfUy4N2iEHmL2NkIw=", memoryBits, iterations);
 
             startTime = DateTime.UtcNow;
             hash = hasher.Hash("foo1", "NyfLZ6RJXWE1aHrrM5JRefMlipdBV0bCp");
@@ -83,7 +83,7 @@ namespace XHash.Test
             if (!Directory.Exists("stats"))
                 Directory.CreateDirectory("stats");
 
-            CellFrequency(String.Format("cellfreq-{0}-{1}.txt", iterations, multiplier), hasher.__hashArray);
+            CellFrequency(String.Format("cellfreq-{0}-{1}.txt", memoryBits, iterations), hasher.__hashArray);
 
 
             /* xored cell frequency */
@@ -94,15 +94,16 @@ namespace XHash.Test
 
             Console.WriteLine("0 xor bytes: " + xored.Count(x => x == 0));
 
-            CellFrequency(String.Format("xor-cellfreq-{0}-{1}.txt", iterations, multiplier), xored);
+            CellFrequency(String.Format("xor-cellfreq-{0}-{1}.txt", memoryBits, iterations), xored);
 
 
             /* visit counts */
             var chars = "0123456789abcdefghijklmnopqrstuvwxyz".ToCharArray();
-            System.IO.File.WriteAllText(String.Format(@"stats\hash-{0}-{1}.txt", iterations, multiplier), String.Join("", hasher._visitCounts.Select(v => chars[v])));
+            System.IO.File.WriteAllText(String.Format(@"stats\hash-{0}-{1}.txt", memoryBits, iterations), String.Join("", hasher._visitCounts.Select(v => chars[v])));
 
 
             /* depth, count, iterations */
+            /*
             int hashArraySize = hasher.__hashArraySize / (1 << multiplier);
             _mixingHashes = hasher._hashes.Skip(hashArraySize + 1).ToList();
 
@@ -123,6 +124,7 @@ namespace XHash.Test
 
             var depths = _mixingHashes.Select(h => GetTreeInfo(hasher, h).ToString());
             System.IO.File.WriteAllLines(String.Format(@"stats\depths-{0}-{1}.txt", iterations, multiplier), depths);
+            */
 #endif
             Console.ReadLine();
         }
