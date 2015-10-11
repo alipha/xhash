@@ -76,7 +76,7 @@ namespace XHash.Test
 
             _fillAmount = fillBlocks * PasswordHasher.DigestSize;   // how many bytes the PBKDF2 should generate
 
-	        _mixingIterations = fillBlocks * 2 + additionalIterations;  /* # of times we call crypto_hash_sha512 */
+	        _mixingIterations = fillBlocks + additionalIterations;  /* # of times we call crypto_hash_sha512 */
 	        _memoryBlocks = fillBlocks * MULTIPLIER;
 
             _hashArray = new byte[MemoryUsage];

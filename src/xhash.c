@@ -77,7 +77,7 @@ int xhash_init(xhash_settings *handle, const void *system_salt, size_t system_sa
 	memory_usage = fill_amount * XHASH_MULTIPLIER;  /* Memory usage in bytes*/
 
 	handle->system_salt_len = system_salt_len + INTERNAL_SALT_LEN;
-	handle->mixing_iterations = fill_blocks * 2 + additional_iterations;  /* # of times we call crypto_hash_sha512 */
+	handle->mixing_iterations = fill_blocks + additional_iterations;  /* # of times we call crypto_hash_sha512 */
 	handle->fill_amount = fill_amount;
 	handle->memory_blocks = fill_blocks * XHASH_MULTIPLIER;
 	handle->memory_usage = memory_usage;
