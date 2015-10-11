@@ -60,6 +60,8 @@ namespace XHash.Test
             return;
              */
 
+            Console.WriteLine(PasswordHasher.GenerateSalt());
+
             int iterations = 0;
             int memoryBits = 22;
 

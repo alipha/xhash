@@ -22,15 +22,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
 
-/* The Hash algorithm is divided into two parts. First, we fill an array with
-each iterative result of a SHA512 hash of the password+salt.
-Then we "randomly" select cells in this array to hash with the running hash
+/*
+The Hash algorithm is divided into four parts. First, we fill an array with
+a PBKDF2-HMAC-SHA512 of the user's password using the system salt + user salt
+as the key.
+Secondly, we copy this block 16 times in order to efficiently increase the
+amount of memory used without performing expensive PBKDF2.
+Then we "randomly" select cells in this array to hash with a running hash
 and then xor back into that cell, which makes "random" changes to the array,
 forcing the runner of this algorithm to maintain the state of the whole array
 and not being able to easily reproduce what a specific cell contains.
-We divide the number of requested iterations between the two parts such that
-there is at least twice as many iterations done in the second part as the
-first so that the array is sufficientally "mixed up"
+Finally, we perform a SHA512 of this memory and return that back to the user.
 */
 
 #define XHASH_BUILD_LIB
@@ -43,7 +45,7 @@ first so that the array is sufficientally "mixed up"
 
 #define INTERNAL_SALT_LEN (sizeof internal_salt - 1)
 
-char internal_salt[] = "AXHwyuIHKoC1jeOgl0Di2f3s9hSDpjOaVP8xD7X6bVu";
+char internal_salt[] = INTERNAL_SALT;
 
 
 int xhash_init(xhash_settings *handle, const void *system_salt, size_t system_salt_len, size_t memory_bits, size_t additional_iterations)
@@ -64,12 +66,15 @@ int xhash_init(xhash_settings *handle, const void *system_salt, size_t system_sa
 	if (!handle->system_salt)
 		return XHASH_ERROR_MALLOC_FAILED;
 
+	/* Include some salt hardcoded into the library so that attackers will have multiple places to look to find all the salt */
 	memcpy(handle->system_salt, internal_salt, INTERNAL_SALT_LEN);
+	/* And combine it with the system salt the user passed in */
 	memcpy(handle->system_salt + INTERNAL_SALT_LEN, system_salt, system_salt_len);
 
+	/* How many 64-byte (digest-sized) blocks to create from PBKDF2 */
 	fill_blocks = (1 << (memory_bits - XHASH_MULTIPLIER_BITS - XHASH_DIGEST_BITS));
-	fill_amount = fill_blocks * XHASH_DIGEST_SIZE;
-	memory_usage = fill_amount * XHASH_MULTIPLIER;
+	fill_amount = fill_blocks * XHASH_DIGEST_SIZE;  /* How many bytes the PBKDF2 should generate */
+	memory_usage = fill_amount * XHASH_MULTIPLIER;  /* Memory usage in bytes*/
 
 	handle->system_salt_len = system_salt_len + INTERNAL_SALT_LEN;
 	handle->mixing_iterations = fill_blocks * 2 + additional_iterations;  /* # of times we call crypto_hash_sha512 */
@@ -77,7 +82,7 @@ int xhash_init(xhash_settings *handle, const void *system_salt, size_t system_sa
 	handle->memory_blocks = fill_blocks * XHASH_MULTIPLIER;
 	handle->memory_usage = memory_usage;
 
-	handle->hash_array = malloc(memory_usage + XHASH_DIGEST_SIZE); /* add one because we'll store the running hash there */
+	handle->hash_array = malloc(memory_usage);
 
 	if (!handle->hash_array)
 	{
@@ -173,11 +178,13 @@ int xhash(xhash_settings *handle, unsigned char *digest, const void *data, size_
 	memcpy(combined_salt, system_salt, system_salt_len);
 	memcpy(combined_salt + system_salt_len, salt, salt_len);
 
+	/* PBKDF2-HMAC-SHA512 the user's password with (system salt + user salt) and use it to fill hash_array */
 	PBKDF2_SHA512(data, data_len, combined_salt, combined_salt_len, 1, hash_array, fill_amount + XHASH_DIGEST_SIZE);
 
 	/* initialize the running hash to what comes out of PBKDF2 after the hash_array is filled */
 	memcpy(digest, hash_array + fill_amount, XHASH_DIGEST_SIZE);
 
+	/* We only PBKDF2 enough for 1/16th of the hash_array, so duplicate that "fill_amount" 16 times */
 	for (i = 1; i < XHASH_MULTIPLIER; i++)
 	{
 		dest += fill_amount;
@@ -198,7 +205,7 @@ int xhash(xhash_settings *handle, unsigned char *digest, const void *data, size_
 		{
 			/* create a random int from bytes in the running hash and interpret the int as which cell to get a hash from.
 			Since hashes are 64 bytes long and ints are 4 bytes, we can only get 16 random indexes from the hash,
-			which is why _multiplier is limited to 16. */
+			which is why XHASH_MULTIPLIER is 16. */
 			next_index = ((unsigned int)(digest[m * 4] + (digest[m * 4 + 1] << 8) + (digest[m * 4 + 2] << 16)) + 
 				((unsigned int)digest[m * 4 + 3] << 24U)) & bitmask;
 

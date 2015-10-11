@@ -29,7 +29,10 @@ using System.Text;
 
 namespace XHash
 {
-    public enum HashError
+    /* The errors that the C library can report. However, this C# wrapper controls what is sent to
+     * the C library, and so, only Success, InvalidMemoryBits and MallocFailed are actually used,
+     * and the user never sees them. Instead, PasswordHasher will throw exceptions */ 
+    enum HashError
     {
         Success = 0,
         NullHandle = -1,
@@ -41,6 +44,7 @@ namespace XHash
         MallocFailed = -7
     }
 
+    /* Information to pass to the C library. Not relevant for the user */
     [StructLayout(LayoutKind.Sequential)]
     struct Settings
     {
@@ -80,14 +84,17 @@ namespace XHash
         public const int MaxMemoryBits = 31;
 
         public const int DigestBits = 6;
-        public const int DigestSize = (1 << DigestBits);
+        public const int DigestSize = (1 << DigestBits);    // The output of PasswordHasher.Hash is a Base64 encoding of a 64-byte hash (digest)
 
 
-        public int MemoryUsage { get { return xhash_settings.memory_usage; } }
+        // How much memory the hash function uses with specified constructor parameters (same as: 1 << memoryBits)
+        public int MemoryUsage { get { return xhash_settings.memory_usage; } } 
 
 
-        // memoryMultiplier has a range of [0, 4]
-        // iterations * 2^memoryMultiplier < 2^24 (16 million)
+        // Initialize the password hasher with the specified system salt, memoryBits, and additional iterations to perform.
+        // Use GenerateSalt() to create the system salt and store it somewhere separate from the per-user salt.
+        // The PasswordHasher will allocate (1 << memoryBits) bytes of memory and perform (1 << (memoryBits - 10)) iterations by default.
+        // E.g., with the memoryBits default of 22, then 4 MB of memory is allocated and 4192 iterations are performed.
         public PasswordHasher(string systemSalt = "", int memoryBits = DefaultMemoryBits, int additionalIterations = 0)
         {
             byte[] systemSaltBytes = Encoding.ASCII.GetBytes(systemSalt);
@@ -99,11 +106,14 @@ namespace XHash
             {
                 case HashError.Success:           break;
                 case HashError.InvalidMemoryBits: throw new MemoryBitsOutOfRangeException(memoryBits);
+                case HashError.MallocFailed:      throw new InsufficientMemoryException("XHash.PasswordHasher was unable to allocate " + (1 << memoryBits) + " bytes of memory to perform the hashing.");
                 default:                          throw new Exception("Error in PasswordHasher constructor: " + error);
             }              
         }
 
  
+        // Hash the specified password with the specified user salt and return a base64-encoded hash (88 characters after base64-encoding)
+        // Use GenerateSalt() to create the user salt
         public string Hash(string password, string userSalt)
         {
             byte[] passwordBytes = Encoding.ASCII.GetBytes(password);
@@ -119,6 +129,8 @@ namespace XHash
         }
  
  
+        // Not used in password hashing, but a convenience function for generating 256-bit salts to use for system salt and user salt (base64-encoded)
+        // Returns 44 characters after encoding
         public static string GenerateSalt()
         {
             using (var rng = new RNGCryptoServiceProvider())
