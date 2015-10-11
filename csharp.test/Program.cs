@@ -44,7 +44,7 @@ namespace XHash.Test
         }
 
         private static IDictionary<string, HashTreeInfo> _info = new Dictionary<string, HashTreeInfo>();
-        private static IList<string> _mixingHashes;
+        private static IEnumerable<string> _mixingHashes;
         private static IDictionary<string, string> _prevHash = new Dictionary<string, string>();
 #endif
 
@@ -103,11 +103,9 @@ namespace XHash.Test
 
 
             /* depth, count, iterations */
-            /*
-            int hashArraySize = hasher.__hashArraySize / (1 << multiplier);
-            _mixingHashes = hasher._hashes.Skip(hashArraySize + 1).ToList();
+            _mixingHashes = hasher._hashes.Skip(1);
 
-            string prevHash = hasher._hashes[hashArraySize];
+            string prevHash = hasher._hashes[0];
 
             _info[prevHash] = new HashTreeInfo 
             {
@@ -123,8 +121,7 @@ namespace XHash.Test
             }
 
             var depths = _mixingHashes.Select(h => GetTreeInfo(hasher, h).ToString());
-            System.IO.File.WriteAllLines(String.Format(@"stats\depths-{0}-{1}.txt", iterations, multiplier), depths);
-            */
+            System.IO.File.WriteAllLines(String.Format(@"stats\depths-{0}-{1}.txt", memoryBits, iterations), depths);
 #endif
             Console.ReadLine();
         }
