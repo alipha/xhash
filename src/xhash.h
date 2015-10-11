@@ -37,12 +37,12 @@ SOFTWARE.
 #define XHASH_DEFAULT_MEMORY_BITS 22
 
 #define XHASH_MIN_MEMORY_BITS (XHASH_MULTIPLIER_BITS + XHASH_DIGEST_BITS)
-#define XHASH_MAX_MEMORY_BITS (XHASH_DIGEST_BITS + 31)
+#define XHASH_MAX_MEMORY_BITS 31
 
 #define XHASH_SUCCESS 0
 #define XHASH_ERROR_NULL_HANDLE -1
 #define XHASH_ERROR_HANDLE_NOT_INIT -2
-/* memory_multiplier_bits must be between 10 and 37 inclusive. default is 22 */
+/* memory_multiplier_bits must be between 10 and 31 inclusive. default is 22 */
 #define XHASH_ERROR_INVALID_MEMORY_BITS -3
 #define XHASH_ERROR_NULL_DIGEST -4
 #define XHASH_ERROR_NULL_DATA -5

@@ -77,7 +77,7 @@ namespace XHash
 
         public const int DefaultMemoryBits = 22;
         public const int MinMemoryBits = 10;
-        public const int MaxMemoryBits = 37;
+        public const int MaxMemoryBits = 31;
 
         public const int DigestBits = 6;
         public const int DigestSize = (1 << DigestBits);
@@ -140,7 +140,7 @@ namespace XHash
     public class MemoryBitsOutOfRangeException : ArgumentOutOfRangeException
     {
         public MemoryBitsOutOfRangeException(int provided) : base("memoryBits", provided,
-                "Argument memoryBits to LiphSoft.Encryption.PasswordHasher must have a range of 10 to 37 (default of 22). Provided: " + provided)
+                "Argument memoryBits to LiphSoft.Encryption.PasswordHasher must have a range of 10 to 31 (default of 22). Provided: " + provided)
         { }
     }
 }
