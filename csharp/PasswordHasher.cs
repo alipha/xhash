@@ -93,8 +93,8 @@ namespace XHash
 
         // Initialize the password hasher with the specified system salt, memoryBits, and additional iterations to perform.
         // Use GenerateSalt() to create the system salt and store it somewhere separate from the per-user salt.
-        // The PasswordHasher will allocate (1 << memoryBits) bytes of memory and perform (1 << (memoryBits - 10)) iterations by default.
-        // E.g., with the memoryBits default of 22, then 4 MB of memory is allocated and 4192 iterations are performed.
+        // The PasswordHasher will allocate (1 << memoryBits) bytes of memory and perform (1 << (memoryBits - 9)) iterations by default.
+        // E.g., with the memoryBits default of 22, then 4 MB of memory is allocated and 8192 iterations are performed.
         public PasswordHasher(string systemSalt = "", int memoryBits = DefaultMemoryBits, int additionalIterations = 0)
         {
             byte[] systemSaltBytes = Encoding.ASCII.GetBytes(systemSalt);

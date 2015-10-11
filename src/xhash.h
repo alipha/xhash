@@ -91,8 +91,8 @@ extern "C" {
 	/* Call one of the init functions first, passing in a pointer to a xhash_settings struct to fill. */
 	/* Use a good source of randomness to generate at least 32 bytes for the system_salt.
 	   Store the system_salt somewhere separate from the per-user salt.
-	   Allocates (1 << memory_bits) bytes of memory and xhash will perform (1 << (memory_bits - 10)) iterations by default.
-	   E.g., with the memory_bits default of 22, then 4 MB of memory is allocated and 4192 iterations are performed. */
+	   Allocates (1 << memory_bits) bytes of memory and xhash will perform (1 << (memory_bits - 9)) iterations by default.
+	   E.g., with the memory_bits default of 22, then 4 MB of memory is allocated and 8192 iterations are performed. */
 	XHASH_EXPORT
 	int xhash_init(xhash_settings *handle, const void *system_salt, size_t system_salt_len, size_t memory_bits, size_t additional_iterations);
 
